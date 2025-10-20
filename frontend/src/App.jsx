@@ -286,7 +286,7 @@ const App = () => {
                             <div>
                                 <h2 className="text-2xl font-bold text-indigo-700">Analysis Report</h2>
                                 <p className="text-sm text-gray-600">
-                                    For: **{formData.childName || '—'}** • Age: **{formData.childAge || '—'}**
+                                    For: {formData.childName || '—'} , Age: {formData.childAge || '—'}
                                 </p>
                             </div>
                             <button onClick={() => generatePdf(aiResults)}
