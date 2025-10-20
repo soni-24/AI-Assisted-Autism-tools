@@ -31,59 +31,90 @@ const App = () => {
     // -----------------------
     // AI Analysis Handler
     // -----------------------
-    const analyzeWithAI = async (e) => {
-        e.preventDefault();
+    // ...existing code...
 
-        // Check if user filled mandatory fields
-        const isFormFilled = formData.childName && formData.childAge && formData.eyeContact && formData.speechLevel && formData.socialResponse && formData.sensoryReactions;
-        if (!isFormFilled) {
-            setError("Please fill in all the fields before analyzing.");
-            return;
-        }
+// ...existing code...
 
-        setLoading(true);
-        setError(null);
+// ...existing code...
 
-        try {
-            // Call backend /analyze endpoint
-            const res = await fetch(`${import.meta.env.VITE_API_KEY}/analyze`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(formData),
-            });
+const analyzeWithAI = async (e) => {
+    e.preventDefault();
 
-            if (!res.ok) throw new Error(await res.text());
-            const aiOutput = await res.json();
+    // Check if user filled mandatory fields
+    const isFormFilled = formData.childName && formData.childAge && formData.eyeContact && formData.speechLevel && formData.socialResponse && formData.sensoryReactions;
+    if (!isFormFilled) {
+        setError("Please fill in all the fields before analyzing.");
+        return;
+    }
 
-            // Only set aiResults if AI returned actual results
-            if (aiOutput && Object.keys(aiOutput).length > 0) {
-                setAiResults(aiOutput);
+    setLoading(true);
+    setError(null);
+
+    try {
+        // Call backend /analyze endpoint
+        const res = await fetch(`${import.meta.env.VITE_API_KEY}/analyze`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(formData),
+        });
+
+        if (!res.ok) throw new Error(await res.text());
+        const aiOutput = await res.json();
+
+        // Only set aiResults if AI returned actual results
+        if (aiOutput && Object.keys(aiOutput).length > 0) {
+            setAiResults(aiOutput);
+            
+            // ✅ Save to Firebase with proper await and error handling
+            try {
+                const savePayload = {
+                    childName: formData.childName,
+                    childAge: formData.childAge,
+                    eyeContact: formData.eyeContact,
+                    speechLevel: formData.speechLevel,
+                    socialResponse: formData.socialResponse,
+                    sensoryReactions: formData.sensoryReactions,
+                    therapyGoals: aiOutput.therapyGoals || [],
+                    suggestedActivities: aiOutput.suggestedActivities || []
+                };
                 
-                // Save to backend Firebase asynchronously
-                fetch(`${import.meta.env.VITE_API_KEY}/save-conversation`, {
+                console.log("📤 Sending to Firebase:", savePayload);
+                
+                const saveRes = await fetch(`${import.meta.env.VITE_API_KEY}/save-conversation`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        childData: formData,
-                        analysis: aiOutput
-                    }),
-                }).catch((err) => console.error("Failed to save assessment:", err));
-
-                // Show results immediately
-                setCurrentPage("results");
-            } else {
-                setAiResults(null);
-                setError("No analysis returned from AI.");
+                    body: JSON.stringify(savePayload),
+                });
+                
+                if (!saveRes.ok) {
+                    const errorData = await saveRes.json();
+                    console.error("❌ Firebase save failed:", errorData);
+                } else {
+                    const saveData = await saveRes.json();
+                    console.log("✅ Successfully saved to Firebase:", saveData);
+                }
+            } catch (saveError) {
+                console.error("❌ Error saving to Firebase:", saveError);
             }
 
-        } catch (err) {
-            console.error(err);
-            setError(err.message || "Analysis failed. Check if backend is running.");
-        } finally {
-            setLoading(false);
+            // Show results immediately
+            setCurrentPage("results");
+        } else {
+            setAiResults(null);
+            setError("No analysis returned from AI.");
         }
-    };
 
+    } catch (err) {
+        console.error(err);
+        setError(err.message || "Analysis failed. Check if backend is running.");
+    } finally {
+        setLoading(false);
+    }
+};
+
+// ...existing code...
+
+// ...existing code...
     // -----------------------
     // PDF generation
     // -----------------------
@@ -207,7 +238,7 @@ const App = () => {
                             <label className="block">
                                 <div className="text-sm font-medium mb-1 text-gray-700">Child's Age (Years)</div>
                                 <input id="childAge" name="childAge" type="number" min="1" value={formData.childAge} onChange={handleInputChange}
-                                    className="w-full border border-gray-300 px-4 py-2 rounded-xl focus:ring-teal-500 focus:border-teal-500 transition-colors" placeholder="e.g., 5" required />
+                                    className="w-full border border-gray-300 px-4 py-2 rounded-xl focus:ring-teal-500 focus:border-teal-500 transition-colors" placeholder="child age" required />
                             </label>
 
                             {/* Select: Eye Contact */}

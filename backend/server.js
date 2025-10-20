@@ -113,27 +113,40 @@ Based on this profile, suggest exactly 3 short, measurable therapy goals and exa
 });
 
 // POST /save-conversation - Save analysis to Firebase
+// ...existing code...
+
+// POST /save-conversation - Save analysis to Firebase
 app.post("/save-conversation", async (req, res) => {
   try {
-    const { childData, analysis } = req.body;
+    console.log("📥 Received save request body:", req.body);
     
-    if (!childData || !analysis) {
-      return res.status(400).json({ error: "Missing childData or analysis" });
+    const { childName, childAge, eyeContact, speechLevel, socialResponse, sensoryReactions, therapyGoals, suggestedActivities } = req.body;
+    
+    // Validate all required fields
+    if (!childName || !childAge || !eyeContact || !speechLevel || !socialResponse || !sensoryReactions) {
+      console.log("❌ Missing child data:", { childName, childAge, eyeContact, speechLevel, socialResponse, sensoryReactions });
+      return res.status(400).json({ error: "Missing required child data fields" });
+    }
+    
+    if (!therapyGoals || !suggestedActivities) {
+      console.log("❌ Missing analysis data:", { therapyGoals, suggestedActivities });
+      return res.status(400).json({ error: "Missing analysis data (therapyGoals or suggestedActivities)" });
     }
     
     const docRef = await db.collection('autism-sessions').add({
-      childAge: childData.childAge,
-      eyeContact: childData.eyeContact,
-      speechLevel: childData.speechLevel,
-      socialResponse: childData.socialResponse,
-      sensoryReactions: childData.sensoryReactions,
-      therapyGoals: analysis.therapyGoals,
-      suggestedActivities: analysis.suggestedActivities,
+      childName,
+      childAge,
+      eyeContact,
+      speechLevel,
+      socialResponse,
+      sensoryReactions,
+      therapyGoals,
+      suggestedActivities,
       timestamp: admin.firestore.FieldValue.serverTimestamp(),
       createdAt: new Date().toISOString()
     });
     
-    console.log("✅ Saved to Firebase:", docRef.id);
+    console.log("✅ Saved to Firebase with childName:", childName, "Doc ID:", docRef.id);
     res.json({ success: true, id: docRef.id });
   } catch (error) {
     console.error('❌ Error saving to Firebase:', error);
@@ -143,5 +156,7 @@ app.post("/save-conversation", async (req, res) => {
     });
   }
 });
+
+// ...existing code...
 
 app.listen(PORT, () => console.log(`✅ Server running on http://localhost:${PORT}`));
