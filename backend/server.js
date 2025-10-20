@@ -1,8 +1,8 @@
 const express = require("express");
 const cors = require("cors");
 require("dotenv").config();
-// Changed to require the new SDK package and class
 const { GoogleGenAI } = require("@google/genai");
+const admin = require('firebase-admin');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -10,26 +10,33 @@ const PORT = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
+// Initialize Firebase Admin
+try {
+  const serviceAccount = JSON.parse(process.env.FIREBASE_CREDENTIALS);
+  if (!admin.apps.length) {
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount),
+    });
+  }
+  console.log("✅ Firebase Admin initialized");
+} catch (error) {
+  console.error("❌ Firebase initialization failed:", error.message);
+}
+
+const db = admin.firestore();
+
 // Validate API key
 const rawKey = process.env.GEMINI_API_KEY;
 if (!rawKey || !rawKey.trim()) {
   console.error("Missing GEMINI_API_KEY in .env");
-  // In a production app, you might choose to exit or handle this gracefully.
-  // We'll proceed assuming the key will be provided in the runtime environment.
-  // process.exit(1); 
 }
 const apiKey = rawKey ? rawKey.trim() : 'dummy-key'; 
 
-// Initialize GenAI client using the new SDK class (GoogleGenAI)
-// The API key is passed in the configuration object.
+// Initialize GenAI client
 const ai = new GoogleGenAI({ apiKey }); 
-
-// NOTE: The utility function extractTextFromResult is removed as we now enforce JSON output
-// and use the standard result.text method, which is robust for structured output.
 
 // POST /analyze
 app.post("/analyze", async (req, res) => {
-  // Check if the API Key is actually provided, otherwise skip the AI call for the demo environment.
   if (!rawKey || !rawKey.trim()) {
     console.error("Skipping AI call: No valid GEMINI_API_KEY provided.");
     return res.status(503).json({ 
@@ -53,10 +60,9 @@ You are a professional child development therapist specializing in autism. Analy
 - Sensory Reactions: ${sensoryReactions}
 
 Based on this profile, suggest exactly 3 short, measurable therapy goals and exactly 2 practical, structured activities.
-`; // Simplified prompt since the model configuration handles the output structure.
+`;
 
   try {
-    // Define the required JSON output schema
     const responseSchema = {
       type: "OBJECT",
       properties: {
@@ -74,40 +80,66 @@ Based on this profile, suggest exactly 3 short, measurable therapy goals and exa
       required: ["therapyGoals", "suggestedActivities"]
     };
     
-    // Updated API call structure to use ai.models.generateContent
     const result = await ai.models.generateContent({
-      model: "gemini-2.5-flash", // Model is a top-level parameter
+      model: "gemini-2.5-flash",
       contents: [{ role: "user", parts: [{ text: prompt }] }],
       config: {
         responseMimeType: "application/json",
         responseSchema: responseSchema,
-        temperature: 0.2 // Lower temperature for more focused, structured output
+        temperature: 0.2
       },
     });
 
     const jsonText = result.text.trim();
     
-    // Ensure the response is not empty before parsing
     if (!jsonText) {
         throw new Error("Empty JSON response from AI model.");
     }
     
     console.log("Raw AI JSON response:", jsonText);
 
-    // Parse the guaranteed JSON response
     let parsed = JSON.parse(jsonText);
 
-    // Send parsed JSON to frontend
     return res.json(parsed);
 
   } catch (err) {
     console.error("Error in /analyze:", err);
-    // Return a more descriptive error structure
     return res.status(500).json({ 
         error: "AI analysis failed", 
-        // Note: The message below is intentionally generic to avoid confusing the user with internal API errors.
         message: "Could not generate analysis. Please ensure your API key is valid and restart the server.",
         detailedError: err?.message || "Unknown error"
+    });
+  }
+});
+
+// POST /save-conversation - Save analysis to Firebase
+app.post("/save-conversation", async (req, res) => {
+  try {
+    const { childData, analysis } = req.body;
+    
+    if (!childData || !analysis) {
+      return res.status(400).json({ error: "Missing childData or analysis" });
+    }
+    
+    const docRef = await db.collection('autism-sessions').add({
+      childAge: childData.childAge,
+      eyeContact: childData.eyeContact,
+      speechLevel: childData.speechLevel,
+      socialResponse: childData.socialResponse,
+      sensoryReactions: childData.sensoryReactions,
+      therapyGoals: analysis.therapyGoals,
+      suggestedActivities: analysis.suggestedActivities,
+      timestamp: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: new Date().toISOString()
+    });
+    
+    console.log("✅ Saved to Firebase:", docRef.id);
+    res.json({ success: true, id: docRef.id });
+  } catch (error) {
+    console.error('❌ Error saving to Firebase:', error);
+    res.status(500).json({ 
+      error: 'Failed to save data',
+      message: error.message 
     });
   }
 });

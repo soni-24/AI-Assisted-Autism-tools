@@ -1,11 +1,5 @@
 // App.jsx
-import React, { useState, useEffect, useCallback } from "react";
-import { db as firestore, auth as firebaseAuth } from "./firebase";
-import { signInAnonymously, onAuthStateChanged } from "firebase/auth";
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
-
-// Global app ID (for Firestore path)
-const appId = typeof __app_id !== "undefined" ? __app_id : "default-app-id";
+import React, { useState } from "react";
 
 const App = () => {
     const [currentPage, setCurrentPage] = useState("form");
@@ -20,39 +14,6 @@ const App = () => {
     const [aiResults, setAiResults] = useState(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
-
-    // Firebase / User state
-    const [userId, setUserId] = useState(null);
-    const [isAuthReady, setIsAuthReady] = useState(false);
-
-    // -----------------------
-    // Firebase Authentication
-    // -----------------------
-    useEffect(() => {
-        console.log("Firebase Effect running...");
-        try {
-            const unsubscribe = onAuthStateChanged(firebaseAuth, async (user) => {
-                if (user) {
-                    setUserId(user.uid);
-                    console.log("User signed in:", user.uid);
-                } else {
-                    try {
-                        const userCredential = await signInAnonymously(firebaseAuth);
-                        setUserId(userCredential.user.uid);
-                        console.log("Anonymous sign-in success:", userCredential.user.uid);
-                    } catch (anonErr) {
-                        console.error("Anonymous sign-in failed. Using local UID fallback.", anonErr);
-                        setUserId(crypto.randomUUID());
-                    }
-                }
-                setIsAuthReady(true);
-            });
-            return () => unsubscribe();
-        } catch (e) {
-            console.error("Firebase initialization failed:", e);
-            setIsAuthReady(true);
-        }
-    }, []);
 
     // -----------------------
     // Form input handler
@@ -70,65 +31,58 @@ const App = () => {
     // -----------------------
     // AI Analysis Handler
     // -----------------------
-    const analyzeWithAI = useCallback(
-        async (e) => {
-            e.preventDefault();
+    const analyzeWithAI = async (e) => {
+        e.preventDefault();
 
-            // Check if user filled mandatory fields
-            const isFormFilled = formData.childName && formData.childAge && formData.eyeContact && formData.speechLevel && formData.socialResponse && formData.sensoryReactions;
-            if (!isFormFilled) {
-                setError("Please fill in all the fields before analyzing.");
-                return;
-            }
+        // Check if user filled mandatory fields
+        const isFormFilled = formData.childName && formData.childAge && formData.eyeContact && formData.speechLevel && formData.socialResponse && formData.sensoryReactions;
+        if (!isFormFilled) {
+            setError("Please fill in all the fields before analyzing.");
+            return;
+        }
 
-            if (!isAuthReady || !userId) {
-                setError("Initialization in progress. Please wait a moment and try again.");
-                return;
-            }
+        setLoading(true);
+        setError(null);
 
-            setLoading(true);
-            setError(null);
+        try {
+            // Call backend /analyze endpoint
+            const res = await fetch(`${import.meta.env.VITE_API_KEY}/analyze`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(formData),
+            });
 
-            try {
-                const res = await fetch("http://localhost:5000/analyze", {
+            if (!res.ok) throw new Error(await res.text());
+            const aiOutput = await res.json();
+
+            // Only set aiResults if AI returned actual results
+            if (aiOutput && Object.keys(aiOutput).length > 0) {
+                setAiResults(aiOutput);
+                
+                // Save to backend Firebase asynchronously
+                fetch(`${import.meta.env.VITE_API_KEY}/save-conversation`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(formData),
-                });
-
-                if (!res.ok) throw new Error(await res.text());
-                const data = await res.json();
-                const aiOutput = data.analysis || data;
-
-                // Only set aiResults if AI returned actual results
-                if (aiOutput && Object.keys(aiOutput).length > 0) {
-                    setAiResults(aiOutput);
-                } else {
-                    setAiResults(null); // Nothing to show
-                }
-
-                // Save to Firestore
-                // Show results immediately
-                setCurrentPage("results");
-
-                // Save to Firestore asynchronously (fire-and-forget)
-                const assessmentsRef = collection(firestore, `/artifacts/${appId}/users/${userId}/assessments`);
-                addDoc(assessmentsRef, {
-                    ...formData,
-                    aiResults: aiOutput,
-                    createdAt: serverTimestamp(),
-                    userId,
+                    body: JSON.stringify({
+                        childData: formData,
+                        analysis: aiOutput
+                    }),
                 }).catch((err) => console.error("Failed to save assessment:", err));
 
-            } catch (err) {
-                console.error(err);
-                setError(err.message || "Analysis failed. Check if backend is running.");
-            } finally {
-                setLoading(false);
+                // Show results immediately
+                setCurrentPage("results");
+            } else {
+                setAiResults(null);
+                setError("No analysis returned from AI.");
             }
-        },
-        [formData, userId, isAuthReady]
-    );
+
+        } catch (err) {
+            console.error(err);
+            setError(err.message || "Analysis failed. Check if backend is running.");
+        } finally {
+            setLoading(false);
+        }
+    };
 
     // -----------------------
     // PDF generation
@@ -184,6 +138,7 @@ const App = () => {
         html += "</body></html>";
         return html;
     };
+
     const generatePdf = async (result) => {
         if (!result && currentPage === "results") {
             setError("No analysis results to download. Please analyze first.");
@@ -229,7 +184,6 @@ const App = () => {
             setError("PDF generation failed. Check console.");
         }
     };
-
 
     return (
         <div className="min-h-screen p-6 bg-slate-100 font-sans">
@@ -304,13 +258,12 @@ const App = () => {
                                 </select>
                             </label>
 
-                            {/* Buttons (Only Analyze button remains) */}
+                            {/* Analyze Button */}
                             <div className="flex pt-4">
                                 <button type="submit"
-                                    // Disable if loading OR not ready to prevent the timing error
-                                    disabled={loading || !isAuthReady || !userId}
+                                    disabled={loading}
                                     className={`flex-1 flex items-center justify-center space-x-2 px-6 py-3 rounded-xl font-bold transition-all duration-300 transform 
-                                      ${(loading || !isAuthReady || !userId) ? 'bg-indigo-300 cursor-not-allowed shadow-inner' : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg hover:shadow-xl active:scale-[0.99]'}`}>
+                                      ${loading ? 'bg-indigo-300 cursor-not-allowed shadow-inner' : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg hover:shadow-xl active:scale-[0.99]'}`}>
                                     {loading ? (
                                         <>
                                             <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
@@ -321,20 +274,9 @@ const App = () => {
                                     )}
                                 </button>
                             </div>
-                            {/* Show error only if one exists AND if we are past the initial auth phase */}
-                            {error && isAuthReady && <p className="mt-4 text-red-700 font-medium p-3 bg-red-100 border border-red-300 rounded-xl">{error}</p>}
 
-                            {/* {Show initialization message or User ID} */}
-                            <p className="text-xs text-gray-500 mt-2 text-center pt-2 border-t border-gray-200">
-                                Secure User ID: {isAuthReady ? (userId || 'Error acquiring ID') : 'Authenticating...'}
-                            </p>
-
-                            {/* Conditional red box for auth in progress - this replaces the internal error check */}
-                            {!isAuthReady && (
-                                <div className="mt-4 text-red-700 font-medium p-3 bg-red-100 border border-red-300 rounded-xl text-center">
-                                    Initialization in progress. Please wait a moment.
-                                </div>
-                            )}
+                            {/* Error Display */}
+                            {error && <p className="mt-4 text-red-700 font-medium p-3 bg-red-100 border border-red-300 rounded-xl">{error}</p>}
 
                         </form>
                     </section>
@@ -347,7 +289,6 @@ const App = () => {
                                     For: **{formData.childName || '—'}** • Age: **{formData.childAge || '—'}**
                                 </p>
                             </div>
-                            {/* This is the only download button, visible after analysis */}
                             <button onClick={() => generatePdf(aiResults)}
                                 className="bg-teal-600 text-white px-6 py-2 rounded-xl font-semibold hover:bg-teal-700 transition-colors shadow-lg hover:shadow-xl active:scale-[0.99] transform">
                                 Download Full Report PDF
