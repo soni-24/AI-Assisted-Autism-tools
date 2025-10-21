@@ -15,6 +15,23 @@ const App = () => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
 
+    // Emotion Analysis States
+    const [selectedPhoto, setSelectedPhoto] = useState(null);
+    const [photoPreview, setPhotoPreview] = useState(null);
+    const [emotionAnalysis, setEmotionAnalysis] = useState(null);
+    const [emotionLoading, setEmotionLoading] = useState(false);
+    const [emotionError, setEmotionError] = useState('');
+
+    const emotionEmojis = {
+        neutral: '😐',
+        happy: '😊',
+        sad: '😢',
+        angry: '😠',
+        fear: '😨',
+        surprise: '😲',
+        disgust: '🤢'
+    };
+
     // -----------------------
     // Form input handler
     // -----------------------
@@ -111,6 +128,65 @@ const analyzeWithAI = async (e) => {
         setLoading(false);
     }
 };
+
+    // -----------------------
+    // Emotion Analysis Handlers
+    // -----------------------
+    const handlePhotoChange = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            setSelectedPhoto(file);
+            setEmotionError('');
+            setEmotionAnalysis(null);
+            
+            // Create preview
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                setPhotoPreview(reader.result);
+            };
+            reader.readAsDataURL(file);
+        }
+    };
+
+    const analyzeEmotion = async () => {
+        if (!selectedPhoto) {
+            setEmotionError('Please select a photo first');
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('photo', selectedPhoto);
+
+        setEmotionLoading(true);
+        setEmotionError('');
+        
+        try {
+            const response = await fetch(`${import.meta.env.VITE_API_KEY}/analyze-emotion`, {
+                method: 'POST',
+                body: formData
+            });
+
+            const data = await response.json();
+            
+            if (data.success) {
+                setEmotionAnalysis(data);
+            } else {
+                setEmotionError(data.error || 'Analysis failed');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            setEmotionError('Failed to connect to server. Make sure backend is running.');
+        } finally {
+            setEmotionLoading(false);
+        }
+    };
+
+    const resetPhoto = () => {
+        setSelectedPhoto(null);
+        setPhotoPreview(null);
+        setEmotionAnalysis(null);
+        setEmotionError('');
+    };
 
 // ...existing code...
 
@@ -214,14 +290,47 @@ const analyzeWithAI = async (e) => {
             console.error("PDF generation error:", e);
             setError("PDF generation failed. Check console.");
         }
-    };
+    }
 
     return (
         <div className="min-h-screen p-6 bg-slate-100 font-sans">
-            <main className="max-w-2xl mx-auto">
-                <h1 className="text-4xl font-extrabold text-indigo-700 mb-8 text-center drop-shadow-md">
+            <main className="max-w-4xl mx-auto">
+                <h1 className="text-4xl font-extrabold text-indigo-700 mb-4 text-center drop-shadow-md">
                     Child Behavioral Screening
                 </h1>
+                
+                {/* Navigation Tabs */}
+                <div className="flex justify-center gap-4 mb-8">
+                    <button 
+                        onClick={() => setCurrentPage("form")}
+                        className={`px-6 py-3 rounded-xl font-semibold transition-all ${
+                            currentPage === "form" 
+                                ? "bg-indigo-600 text-white shadow-lg" 
+                                : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
+                        }`}
+                    >
+                        📋 Assessment Form
+                    </button>
+                    <button 
+                        onClick={() => setCurrentPage("emotion")}
+                        className="hidden"
+                    >
+                        📸 Emotion Analysis
+                    </button>
+                    {aiResults && (
+                        <button 
+                            onClick={() => setCurrentPage("results")}
+                            className={`px-6 py-3 rounded-xl font-semibold transition-all ${
+                                currentPage === "results" 
+                                    ? "bg-indigo-600 text-white shadow-lg" 
+                                    : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
+                            }`}
+                        >
+                            📊 Results
+                        </button>
+                    )}
+                </div>
+
                 {currentPage === 'form' ? (
                     <section className="bg-white p-8 rounded-3xl shadow-2xl shadow-indigo-200/50 transition-all duration-300 border border-indigo-100">
                         <h2 className="text-2xl font-semibold mb-6 text-indigo-600 border-b pb-3">Enter Child Observations</h2>
@@ -289,19 +398,150 @@ const analyzeWithAI = async (e) => {
                                 </select>
                             </label>
 
+                            {/* Photo Upload Section */}
+                            <div className="mt-6 p-6 bg-indigo-50 border-2 border-indigo-200 rounded-xl">
+                                <h3 className="text-lg font-bold text-indigo-800 mb-3 flex items-center gap-2">
+                                    📸 Optional: Upload Photo for Emotion Analysis
+                                </h3>
+                                <p className="text-sm text-indigo-600 mb-4">Upload a clear photo of the child's face for AI-powered emotional assessment</p>
+                                
+                                <div className="space-y-4">
+                                    <div className="flex flex-col gap-3">
+                                        <input 
+                                            type="file" 
+                                            id="photo-upload"
+                                            accept="image/*" 
+                                            onChange={handlePhotoChange}
+                                            className="hidden"
+                                        />
+                                        <label 
+                                            htmlFor="photo-upload" 
+                                            className="cursor-pointer px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold transition-all shadow-md hover:shadow-lg active:scale-95 inline-flex items-center justify-center gap-2 w-full"
+                                        >
+                                            <span>📁</span>
+                                            {selectedPhoto ? '✓ Photo Selected' : 'Choose Photo'}
+                                        </label>
+
+                                    {photoPreview && (
+                                        <div className="mt-2">
+                                            <img src={photoPreview} alt="Preview" className="max-w-full h-48 object-contain rounded-xl shadow-lg border-2 border-indigo-300 mx-auto" />
+                                        </div>
+                                    )}
+                                        
+                                        {selectedPhoto && (
+                                            <div className="flex gap-3">
+                                                <button 
+                                                    type="button"
+                                                    onClick={analyzeEmotion}
+                                                    disabled={emotionLoading}
+                                                    className={`flex-1 px-6 py-3 rounded-xl font-semibold transition-all shadow-md ${
+                                                        emotionLoading 
+                                                            ? 'bg-gray-400 cursor-not-allowed' 
+                                                            : 'bg-green-600 hover:bg-green-700 text-white hover:shadow-lg active:scale-95'
+                                                    }`}
+                                                >
+                                                    {emotionLoading ? '🔄 Analyzing...' : '🔍 Analyze Emotion'}
+                                                </button>
+                                                
+                                                <button 
+                                                    type="button"
+                                                    onClick={resetPhoto}
+                                                    className="px-6 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl font-semibold transition-all shadow-md hover:shadow-lg active:scale-95"
+                                                >
+                                                    🔄 Reset
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {emotionError && (
+                                        <div className="p-3 bg-red-100 border border-red-300 rounded-xl text-red-700 text-sm">
+                                            ⚠️ {emotionError}
+                                        </div>
+                                    )}
+
+                                    {emotionAnalysis && (
+                                        <div className="mt-4 p-6 bg-gradient-to-br from-blue-50 to-indigo-100 rounded-2xl shadow-lg border-2 border-indigo-200">
+                                            <div className="text-center mb-4 pb-4 border-b-2 border-indigo-300">
+                                                <h4 className="text-xl font-bold text-indigo-900 mb-2">📊 Emotional Assessment</h4>
+                                                <p className="text-indigo-700 text-sm">AI-powered facial expression analysis</p>
+                                            </div>
+                                            
+                                            {/* Primary Emotion */}
+                                            <div className="flex justify-between items-center p-4 bg-white rounded-xl mb-4 shadow-md border-2 border-indigo-200">
+                                                <div className="flex items-center gap-3">
+                                                    <span className="text-3xl">{emotionEmojis[emotionAnalysis.primaryEmotion?.toLowerCase()] || '😐'}</span>
+                                                    <div>
+                                                        <div className="text-xs text-gray-500 font-medium">Primary Emotion</div>
+                                                        <div className="text-lg font-bold text-indigo-900 capitalize">{emotionAnalysis.primaryEmotion}</div>
+                                                    </div>
+                                                </div>
+                                                <div className="px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-full font-bold shadow-md">
+                                                    {emotionAnalysis.confidence}%
+                                                </div>
+                                            </div>
+
+                                            {/* Emotion Grid */}
+                                            <h5 className="text-indigo-900 font-semibold mb-3 text-sm">Detailed Analysis:</h5>
+                                            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
+                                                {emotionAnalysis.emotions && Object.entries(emotionAnalysis.emotions).map(([emotion, percentage]) => (
+                                                    <div key={emotion} className="bg-white rounded-xl p-3 shadow-md hover:shadow-lg transition-all hover:-translate-y-1 border border-indigo-100">
+                                                        <div className="flex items-center gap-2 mb-2">
+                                                            <span className="text-2xl">{emotionEmojis[emotion]}</span>
+                                                            <span className="font-semibold text-gray-800 capitalize text-sm">{emotion}</span>
+                                                        </div>
+                                                        <div className="w-full bg-gray-200 rounded-full h-2 mb-1 overflow-hidden">
+                                                            <div 
+                                                                className="bg-gradient-to-r from-indigo-500 to-blue-500 h-2 rounded-full transition-all duration-700"
+                                                                style={{ width: `${percentage}%` }}
+                                                            ></div>
+                                                        </div>
+                                                        <div className="text-right text-sm font-bold text-indigo-600">{percentage}%</div>
+                                                    </div>
+                                                ))}
+                                            </div>
+
+                                            {/* Additional Info */}
+                                            {(emotionAnalysis.eyeContact || emotionAnalysis.engagement || emotionAnalysis.notes) && (
+                                                <div className="bg-white rounded-xl p-4 shadow-md space-y-2 border border-indigo-100">
+                                                    {emotionAnalysis.eyeContact && (
+                                                        <div className="text-sm border-b border-gray-100 pb-2">
+                                                            <strong className="text-indigo-900">👁️ Eye Contact:</strong> 
+                                                            <span className="text-gray-700 ml-2">{emotionAnalysis.eyeContact}</span>
+                                                        </div>
+                                                    )}
+                                                    {emotionAnalysis.engagement && (
+                                                        <div className="text-sm border-b border-gray-100 pb-2">
+                                                            <strong className="text-indigo-900">🤝 Engagement:</strong> 
+                                                            <span className="text-gray-700 ml-2">{emotionAnalysis.engagement}</span>
+                                                        </div>
+                                                    )}
+                                                    {emotionAnalysis.notes && (
+                                                        <div className="text-sm">
+                                                            <strong className="text-indigo-900">📝 Notes:</strong> 
+                                                            <span className="text-gray-700 ml-2">{emotionAnalysis.notes}</span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
                             {/* Analyze Button */}
-                            <div className="flex pt-4">
+                            <div className="pt-6">
                                 <button type="submit"
                                     disabled={loading}
-                                    className={`flex-1 flex items-center justify-center space-x-2 px-6 py-3 rounded-xl font-bold transition-all duration-300 transform 
+                                    className={`w-full flex items-center justify-center space-x-2 px-6 py-4 rounded-xl font-bold text-lg transition-all duration-300 transform 
                                       ${loading ? 'bg-indigo-300 cursor-not-allowed shadow-inner' : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg hover:shadow-xl active:scale-[0.99]'}`}>
                                     {loading ? (
                                         <>
-                                            <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                                            <span>Analyzing...</span>
+                                            <svg className="animate-spin h-6 w-6 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                                            <span>Analyzing Behavioral Data...</span>
                                         </>
                                     ) : (
-                                        <span>Analyze with AI</span>
+                                        <span>📋 Generate AI Assessment Report</span>
                                     )}
                                 </button>
                             </div>

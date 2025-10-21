@@ -3,9 +3,16 @@ const cors = require("cors");
 require("dotenv").config();
 const { GoogleGenAI } = require("@google/genai");
 const admin = require('firebase-admin');
+const multer = require('multer');
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5001;
+
+// Configure multer for file uploads
+const upload = multer({ 
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
+});
 
 app.use(cors());
 app.use(express.json());
@@ -112,8 +119,118 @@ Based on this profile, suggest exactly 3 short, measurable therapy goals and exa
   }
 });
 
-// POST /save-conversation - Save analysis to Firebase
-// ...existing code...
+// POST /analyze-emotion - Analyze facial emotions from uploaded photo
+app.post("/analyze-emotion", upload.single('photo'), async (req, res) => {
+  if (!rawKey || !rawKey.trim()) {
+    return res.status(503).json({ 
+      error: "Service Unavailable", 
+      message: "GEMINI_API_KEY is missing"
+    });
+  }
+
+  if (!req.file) {
+    return res.status(400).json({ error: "No photo uploaded" });
+  }
+
+  try {
+    const imageBase64 = req.file.buffer.toString('base64');
+    
+    const prompt = `Analyze this child's facial expression and emotional state in detail.
+
+Provide a structured emotional assessment with percentage confidence for each emotion:
+- Neutral (😐)
+- Happy (😊)
+- Sad (😢)
+- Angry (😠)
+- Fear (😨)
+- Surprise (😲)
+- Disgust (🤢)
+
+Also analyze:
+- Eye contact quality
+- Engagement level
+- Any signs of sensory sensitivity
+
+Return your response in JSON format with emotion percentages.`;
+
+    const responseSchema = {
+      type: "OBJECT",
+      properties: {
+        primaryEmotion: {
+          type: "STRING",
+          description: "The dominant emotion detected"
+        },
+        confidence: {
+          type: "NUMBER",
+          description: "Confidence percentage for primary emotion"
+        },
+        emotions: {
+          type: "OBJECT",
+          properties: {
+            neutral: { type: "NUMBER" },
+            happy: { type: "NUMBER" },
+            sad: { type: "NUMBER" },
+            angry: { type: "NUMBER" },
+            fear: { type: "NUMBER" },
+            surprise: { type: "NUMBER" },
+            disgust: { type: "NUMBER" }
+          }
+        },
+        eyeContact: {
+          type: "STRING",
+          description: "Eye contact assessment (direct/averted/minimal)"
+        },
+        engagement: {
+          type: "STRING",
+          description: "Engagement level (high/medium/low)"
+        },
+        notes: {
+          type: "STRING",
+          description: "Additional observations"
+        }
+      },
+      required: ["primaryEmotion", "confidence", "emotions"]
+    };
+
+    const result = await ai.models.generateContent({
+      model: "gemini-2.0-flash-exp",
+      contents: [{
+        role: "user",
+        parts: [
+          { text: prompt },
+          {
+            inlineData: {
+              mimeType: req.file.mimetype,
+              data: imageBase64
+            }
+          }
+        ]
+      }],
+      config: {
+        temperature: 0.3,
+        responseMimeType: "application/json",
+        responseSchema: responseSchema
+      }
+    });
+
+    const jsonText = result.text.trim();
+    const analysis = JSON.parse(jsonText);
+    
+    console.log("✅ Emotion analysis completed for:", req.file.originalname);
+    res.json({ 
+      success: true,
+      ...analysis,
+      fileName: req.file.originalname
+    });
+
+  } catch (err) {
+    console.error("Error in /analyze-emotion:", err);
+    res.status(500).json({ 
+      error: "Emotion analysis failed",
+      message: err?.message || "Unknown error"
+    });
+  }
+});
 
 // POST /save-conversation - Save analysis to Firebase
 app.post("/save-conversation", async (req, res) => {
