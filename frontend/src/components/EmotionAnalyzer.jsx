@@ -47,7 +47,7 @@ function EmotionAnalyzer() {
     setError('');
     
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_KEY}/analyze-emotion`, {
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/analyze-emotion`, {
         method: 'POST',
         body: formData
       });

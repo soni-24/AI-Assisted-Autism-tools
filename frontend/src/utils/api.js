@@ -6,7 +6,7 @@
  * @returns {Promise<Object>} AI analysis results
  */
 export const analyzeChildBehavior = async (formData) => {
-    const response = await fetch(`${import.meta.env.VITE_API_KEY}/analyze`, {
+    const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/analyze`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),
@@ -28,7 +28,7 @@ export const analyzeEmotion = async (photoFile) => {
     const formData = new FormData();
     formData.append('photo', photoFile);
 
-    const response = await fetch(`${import.meta.env.VITE_API_KEY}/analyze-emotion`, {
+    const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/analyze-emotion`, {
         method: 'POST',
         body: formData
     });
@@ -48,7 +48,7 @@ export const analyzeEmotion = async (photoFile) => {
  * @returns {Promise<Object>} Save confirmation
  */
 export const saveToFirebase = async (assessmentData) => {
-    const response = await fetch(`${import.meta.env.VITE_API_KEY}/save-conversation`, {
+    const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/save-conversation`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(assessmentData),
