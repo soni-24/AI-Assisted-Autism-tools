@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import './EmotionAnalyzer.css';
 
+// Backend URL with fallback
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'https://ai-assisted-autism-tools.onrender.com';
+
 function EmotionAnalyzer() {
   const [selectedFile, setSelectedFile] = useState(null);
   const [preview, setPreview] = useState(null);
@@ -47,7 +50,7 @@ function EmotionAnalyzer() {
     setError('');
     
     try {
-      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/analyze-emotion`, {
+      const response = await fetch(`${BACKEND_URL}/analyze-emotion`, {
         method: 'POST',
         body: formData
       });
